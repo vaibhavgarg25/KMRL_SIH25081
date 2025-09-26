@@ -1,0 +1,46 @@
+# Node modules (they'll be installed inside container)
+node_modules
+**/node_modules
+
+# Dependency logs
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build artifacts
+dist
+build
+.cache
+.next
+out
+
+# Prisma client (gets generated in build stage anyway)
+prisma/generated
+generated/prisma
+generated
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Git + IDE
+.git
+.gitignore
+*.swp
+*.swo
+*.idea
+*.vscode
+
+# Env files (don’t bake secrets into images!)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Docker itself
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
