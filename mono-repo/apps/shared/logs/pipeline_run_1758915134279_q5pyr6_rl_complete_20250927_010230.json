@@ -1,0 +1,12 @@
+{
+  "message": "RL scheduling completed successfully",
+  "input_file_path": "output/moo/moo_result_run_1758915134279_q5pyr6.csv",
+  "output_file_path": "output/rl/rl_final_run_1758915134279_q5pyr6.csv",
+  "total_trains": 25,
+  "trains_in_service": 13,
+  "trains_under_maintenance": 4,
+  "trains_standby": 8,
+  "timestamp": "2025-09-27T01:02:30.215707",
+  "run_id": "run_1758915134279_q5pyr6",
+  "stage": "rl_complete"
+}
