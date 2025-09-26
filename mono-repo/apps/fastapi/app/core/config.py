@@ -25,7 +25,15 @@ class Settings(BaseSettings):
     SIMULATION_MAX_DAYS: int = 365
     SIMULATION_DEFAULT_DAYS: int = 1
     
-    # Shared Storage Configuration
+    # Storage Configuration - AWS S3 Storage (recommended) or Local fallback
+    # AWS S3 Storage Configuration
+    AWS_ACCESS_KEY_ID: Optional[str] = None
+    AWS_SECRET_ACCESS_KEY: Optional[str] = None
+    AWS_REGION: str = "us-east-1"
+    AWS_BUCKET_NAME: str = "kochi-metro-storage"
+    AWS_ENDPOINT: Optional[str] = None  # For S3-compatible services
+    
+    # Legacy Shared Storage Configuration (fallback)
     SHARED_STORAGE_PATH: str = "/shared/storage"
     
     # Backend Communication URLs

@@ -1,6 +1,7 @@
 """
 Shared storage manager for FastAPI services
-Provides centralized file handling for the pipeline system
+Supports both AWS S3 Storage (recommended) and local storage (fallback)
+Automatically switches based on environment configuration
 """
 
 import os
@@ -9,12 +10,15 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import pandas as pd
 from app.core.config import settings
+from app.core.s3_storage import S3StorageManager
 
 class StorageManager:
     """Storage utility class for managing pipeline files in FastAPI services"""
     
     # Storage configuration
     BASE_STORAGE_PATH = settings.SHARED_STORAGE_PATH
+    use_s3 = False
+    s3_initialized = False
     
     # Directory structure - organized by service
     PATHS = {
@@ -37,7 +41,38 @@ class StorageManager:
     
     @classmethod
     async def initialize_storage(cls) -> None:
-        """Initialize storage directories if they don't exist"""
+        """Initialize storage - either AWS S3 Storage or local directories"""
+        # Check if S3 configuration is available
+        if (settings.AWS_ACCESS_KEY_ID and 
+            settings.AWS_SECRET_ACCESS_KEY and 
+            settings.AWS_REGION and 
+            settings.AWS_BUCKET_NAME):
+            
+            # Initialize S3 Storage
+            cls.use_s3 = True
+            try:
+                S3StorageManager.initialize(
+                    settings.AWS_ACCESS_KEY_ID,
+                    settings.AWS_SECRET_ACCESS_KEY,
+                    settings.AWS_REGION,
+                    settings.AWS_BUCKET_NAME,
+                    settings.AWS_ENDPOINT
+                )
+                await S3StorageManager.initialize_storage()
+                cls.s3_initialized = True
+                print(f"[Storage] Initialized with AWS S3 Storage (bucket: {settings.AWS_BUCKET_NAME}, region: {settings.AWS_REGION})")
+            except Exception as e:
+                print(f"[Storage] Failed to initialize S3 Storage, falling back to local: {e}")
+                cls.use_s3 = False
+                await cls._initialize_local_storage()
+        else:
+            # Fall back to local storage
+            cls.use_s3 = False
+            await cls._initialize_local_storage()
+    
+    @classmethod
+    async def _initialize_local_storage(cls) -> None:
+        """Initialize local storage directories (legacy/fallback)"""
         try:
             directories = [
                 cls.get_storage_path("INPUT"),
@@ -51,10 +86,10 @@ class StorageManager:
             
             for directory in directories:
                 Path(directory).mkdir(parents=True, exist_ok=True)
-                print(f"[Storage] Directory ensured: {directory}")
-                
+                print(f"[Storage] Local directory ensured: {directory}")
+            print("[Storage] Initialized with local file system")
         except Exception as e:
-            print(f"[Storage] Failed to initialize directories: {e}")
+            print(f"[Storage] Failed to initialize local directories: {e}")
             raise
     
     @classmethod
@@ -70,12 +105,19 @@ class StorageManager:
     @classmethod
     async def read_csv_from_path(cls, file_path: str) -> pd.DataFrame:
         """Read CSV file from storage path and return DataFrame"""
+        if cls.use_s3 and cls.s3_initialized and not os.path.isabs(file_path):
+            try:
+                return await S3StorageManager.read_csv_from_path(file_path)
+            except Exception as e:
+                print(f"[Storage] S3 read failed, falling back to local: {e}")
+                
+        # Local storage fallback
         try:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"File not found: {file_path}")
                 
             df = pd.read_csv(file_path)
-            print(f"[Storage] CSV loaded from: {file_path} ({len(df)} rows)")
+            print(f"[Storage] CSV loaded locally from: {file_path} ({len(df)} rows)")
             return df
             
         except Exception as e:
@@ -85,6 +127,14 @@ class StorageManager:
     @classmethod
     async def save_csv_to_storage(cls, df: pd.DataFrame, directory: str, filename: str) -> str:
         """Save DataFrame as CSV to storage and return file path"""
+        if cls.use_s3 and cls.s3_initialized:
+            try:
+                file_path = f"{cls.PATHS[directory]}/{filename}" if directory in cls.PATHS else f"{directory}/{filename}"
+                return await S3StorageManager.save_csv_to_storage(df, file_path)
+            except Exception as e:
+                print(f"[Storage] S3 save failed, falling back to local: {e}")
+                
+        # Local storage fallback
         try:
             file_path = cls.get_file_path(directory, filename)
             
@@ -93,7 +143,7 @@ class StorageManager:
             
             # Save CSV
             df.to_csv(file_path, index=False)
-            print(f"[Storage] CSV saved to: {file_path} ({len(df)} rows)")
+            print(f"[Storage] CSV saved locally to: {file_path} ({len(df)} rows)")
             
             return file_path
             
@@ -146,15 +196,30 @@ class StorageManager:
     @classmethod
     async def file_exists(cls, file_path: str) -> bool:
         """Check if file exists"""
+        if cls.use_s3 and cls.s3_initialized and not os.path.isabs(file_path):
+            try:
+                return await S3StorageManager.file_exists(file_path)
+            except Exception as e:
+                print(f"[Storage] S3 file check failed, falling back to local: {e}")
+                
+        # Local storage fallback
         return os.path.exists(file_path)
     
     @classmethod
     async def delete_file(cls, file_path: str) -> None:
         """Delete file from storage"""
+        if cls.use_s3 and cls.s3_initialized and not os.path.isabs(file_path):
+            try:
+                await S3StorageManager.delete_file(file_path)
+                return
+            except Exception as e:
+                print(f"[Storage] S3 delete failed, falling back to local: {e}")
+                
+        # Local storage fallback
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
-                print(f"[Storage] File deleted: {file_path}")
+                print(f"[Storage] File deleted locally: {file_path}")
         except Exception as e:
             print(f"[Storage] Failed to delete file {file_path}: {e}")
             raise
@@ -162,6 +227,14 @@ class StorageManager:
     @classmethod
     async def cleanup_temp_files(cls, hours_old: int = 24) -> None:
         """Clean up old temporary files"""
+        if cls.use_s3 and cls.s3_initialized:
+            try:
+                await S3StorageManager.cleanup_old_files("temp", hours_old)
+                return
+            except Exception as e:
+                print(f"[Storage] S3 cleanup failed, falling back to local: {e}")
+                
+        # Local storage fallback
         try:
             temp_dir = cls.get_storage_path("TEMP")
             if not os.path.exists(temp_dir):
@@ -181,6 +254,13 @@ class StorageManager:
     @classmethod
     async def get_storage_stats(cls) -> Dict[str, int]:
         """Get storage usage statistics"""
+        if cls.use_s3 and cls.s3_initialized:
+            try:
+                return await S3StorageManager.get_storage_stats()
+            except Exception as e:
+                print(f"[Storage] S3 stats failed, falling back to local: {e}")
+                
+        # Local storage fallback
         try:
             stats = {}
             for name, path in cls.PATHS.items():
@@ -197,6 +277,19 @@ class StorageManager:
         except Exception as e:
             print(f"[Storage] Failed to get storage stats: {e}")
             return {"input_files": 0, "output_files": 0, "temp_files": 0}
+
+    @classmethod
+    async def get_public_url(cls, file_path: str) -> str:
+        """Get public URL for file access (only available with S3)"""
+        if cls.use_s3 and cls.s3_initialized:
+            try:
+                return S3StorageManager.get_public_url(file_path)
+            except Exception as e:
+                print(f"[Storage] Failed to get public URL: {e}")
+                raise
+                
+        # Local storage doesn't support public URLs
+        raise NotImplementedError("Public URLs are only available with S3 Storage")
 
 
 # Utility functions for pipeline integration
