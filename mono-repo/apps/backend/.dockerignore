@@ -1,46 +1,100 @@
-# Node modules (they'll be installed inside container)
+# Dependencies
 node_modules
-**/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Dependency logs
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-pnpm-debug.log
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
 
-# Build artifacts
-dist
-build
-.cache
-.next
-out
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
 
-# Prisma client (gets generated in build stage anyway)
-prisma/generated
-generated/prisma
-generated
+# nyc test coverage
+.nyc_output
 
-# OS-specific files
-.DS_Store
-Thumbs.db
+# Dependency directories
+node_modules/
+jspm_packages/
 
-# Git + IDE
-.git
-.gitignore
-*.swp
-*.swo
-*.idea
-*.vscode
+# Optional npm cache directory
+.npm
 
-# Env files (don’t bake secrets into images!)
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Environment files
 .env
-.env.local
-.env.development
 .env.test
 .env.production
+.env.local
 
-# Docker itself
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build output
+dist/
+build/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Git
+.git
+.gitignore
+README.md
+
+# Docker
 Dockerfile
 .dockerignore
-docker-compose.yml
-docker-compose.*.yml
+
+# Development files
+*.md
+.prettierrc
+.eslintrc*
+tsconfig.json
+
+# Test files
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+jest.config.js
+
+# Temporary files
+tmp/
+temp/
+
+# Prisma migrations (optional - include if you want to run migrations in container)
+# prisma/migrations/

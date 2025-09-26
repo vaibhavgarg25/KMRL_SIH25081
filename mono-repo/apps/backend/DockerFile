@@ -1,0 +1,40 @@
+# Stage 1: Build stage
+FROM node:20-alpine AS builder
+WORKDIR /build
+
+# Install all dependencies
+COPY package*.json ./
+RUN npm install && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Build the app (e.g., TypeScript)
+RUN npm run build
+
+# Stage 2: Production dependencies
+FROM node:20-alpine AS deps
+WORKDIR /deps
+
+# Install only production dependencies
+COPY package*.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+# Stage 3: Runtime
+FROM node:20-alpine AS runner
+ENV NODE_ENV=production
+WORKDIR /app
+
+# Copy production node_modules
+COPY --from=deps /deps/node_modules ./node_modules
+
+# Copy build artifacts
+COPY --from=builder /build/dist ./dist
+COPY --from=builder /build/generated ./generated
+COPY --from=builder /build/package.json ./
+
+# Expose application port
+EXPOSE 8000
+
+# Start the app
+CMD ["node", "dist/index.js"]
