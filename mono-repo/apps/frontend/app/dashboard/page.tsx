@@ -576,9 +576,6 @@ return (
             <BayView trainsets={trainsets} layout="2x8" />
           </div>
 
-          
-
-          
         </div>
       </div>
     </>
