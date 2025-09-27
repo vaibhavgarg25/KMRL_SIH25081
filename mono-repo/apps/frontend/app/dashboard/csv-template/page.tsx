@@ -350,7 +350,7 @@ export default function CSVTemplatePage() {
     const warnings: string[] = []
 
     if (missing.length) errors.push(`Missing required: ${missing.join(", ")}`)
-    if (extra.length) warnings.push(`Unrecognized columns (will be ignored): ${extra.join(", ")}`)
+    //if (extra.length) warnings.push(`Unrecognized columns (will be ignored): ${extra.join(", ")}`)
 
     // Prepare preview rows (slice first 6 data rows)
     const dataRows = rows.slice(1)
@@ -606,12 +606,25 @@ export default function CSVTemplatePage() {
               <span className="text-sm">✅ I confirm this file is correct.</span>
             </label>
 
-            <div className="flex gap-2 mt-4">
-              <Button onClick={handleSend} disabled={!confirmChecked || isSending} className="flex-1 bg-green-600 text-white">
-                {isSending ? "⏳ Sending..." : "📤 Send to Database"}
-              </Button>
-              <Button onClick={handleCancelConfirm} variant="outline">Cancel</Button>
-            </div>
+           <div className="flex gap-2 mt-4">
+  <Button
+    onClick={handleSend}
+    disabled={!confirmChecked || isSending}
+    className="flex-1 bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 text-white"
+  >
+    {isSending ? "⏳ Sending..." : "📤 Send to Database"}
+  </Button>
+
+  <Button
+    onClick={handleCancelConfirm}
+    className="bg-red-500 text-white hover:from-red-500 hover:to-red-600 
+               dark:bg-red-600 dark:hover:from-red-600 dark:hover:to-red-700
+               hover:bg-gradient-to-r transition-colors"
+  >
+    Cancel
+  </Button>
+</div>
+
 
             {sendError && <div className="mt-2 text-red-600 text-sm">❌ {sendError}</div>}
             {sendSuccess && <div className="mt-2 text-green-600 text-sm">🎉 Success! File processed.</div>}
