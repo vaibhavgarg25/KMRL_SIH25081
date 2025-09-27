@@ -35,7 +35,7 @@ export const uploadCSV = async (req: Request, res: Response) => {
     formData.append('days_to_simulate', days_to_simulate);
 
     // Send file to external API
-    axios.post("http://localhost:8000/api/pipeline/start-csv", formData, {
+    axios.post(`${process.env.BACKEND_BASE_URL}/api/pipeline/start-csv`, formData, {
       headers: formData.getHeaders(),
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
