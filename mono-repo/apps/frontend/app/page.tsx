@@ -78,11 +78,21 @@ export default function HomePage() {
                     </a>
                   </Link>
 
-                  <Link href="/features" legacyBehavior>
-                    <a className="inline-flex h-12 items-center justify-center rounded-full border border-teal-400/20 px-5 text-sm font-medium text-teal-400 hover:bg-teal-400/6 transition">
-                      Learn more
-                    </a>
-                  </Link>
+<Link href="/features" legacyBehavior>
+  <a
+    className="not-prose inline-flex h-12 items-center justify-center rounded-full px-5 text-sm font-medium
+               border border-[var(--card-border)] bg-white text-[var(--fg)] shadow-sm
+               hover:bg-neutral-50 transition
+               focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2
+               dark:bg-transparent dark:hover:bg-neutral-800"
+  >
+    Learn more
+  </a>
+</Link>
+
+
+
+
                 </div>
               </div>
 
