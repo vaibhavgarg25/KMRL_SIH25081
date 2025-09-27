@@ -158,20 +158,10 @@ export default function Dashboard() {
 
   // Show the uploads popup once after loading — simulates "show after login / first visit"
   useEffect(() => {
-    if (loading) return;
-    try {
-      const key = "dashboard_seen_uploads_popup_v1";
-      const seen = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
-      if (!seen) {
-        const t = setTimeout(() => {
-          setShowUploadsPopup(true);
-        }, 500);
-        return () => clearTimeout(t);
-      }
-    } catch {
-      // ignore localStorage errors
-    }
-  }, [loading]);
+  if (loading) return;
+  setShowUploadsPopup(true); // show after each sign-in/session load
+}, [loading]);
+
 
   // helper to accept string | Date
   const daysUntilSafe = (d?: string | Date | null) => {
@@ -393,83 +383,52 @@ export default function Dashboard() {
 
 return (
   <>
-    {/* Uploads popup — colorful, modern, fun */}
-    {showUploadsPopup && (
-      <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.98 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 8, scale: 0.98 }}
-        transition={{ duration: 0.28, ease: "easeOut" }}
-        className="fixed right-6 bottom-6 z-50 w-80 max-w-full rounded-2xl shadow-2xl p-0 overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Uploads helper"
-      >
-        {/* Colored accent + content */}
-        <div className="flex bg-gradient-to-br from-white/95 to-sky-50/80 dark:from-slate-900 dark:to-indigo-900/70 backdrop-blur-md border border-border">
-          {/* Left color stripe / icon */}
-          <div className="flex-shrink-0 w-3 bg-gradient-to-b from-indigo-500 via-fuchsia-500 to-amber-400" />
+    {/* Uploads popup — simple, theme-aligned */}
+{showUploadsPopup && (
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: 6 }}
+    transition={{ duration: 0.18, ease: "easeOut" }}
+    className="fixed right-6 bottom-6 z-50 w-[22rem] max-w-[90vw]"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Uploads helper"
+  >
+    <div className="rounded-xl border border-border bg-[var(--bg)] shadow-md">
+      <div className="flex items-start gap-3 p-4">
+        {/* Neutral icon chip */}
+        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+          📤
+        </div>
 
-          {/* Main content area */}
-          <div className="flex-1 px-4 py-3">
-            <div className="flex items-start gap-3">
-              {/* Fun badge / icon */}
-              <div className="flex items-center justify-center h-10 w-10 rounded-lg bg-white/80 dark:bg-white/6 ring-1 ring-white/20 shadow-sm">
-                <span className="text-xl -mt-0.5">📤</span>
-              </div>
+        <div className="flex-1">
+          <h4 className="font-semibold text-text">Start here: Uploads</h4>
+          <p className="mt-0.5 text-sm leading-snug text-muted">
+            Upload CSVs/templates to improve recommendations.
+          </p>
 
-              <div className="flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <h4 className="font-semibold text-text">Start here: Uploads</h4>
-                  {/* Small subtle pill hint */}
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200">
-                    New
-                  </span>
-                </div>
-
-                <p className="text-sm text-muted mt-1 leading-snug">
-                  Upload CSVs or templates to feed the dashboard — fresh files = better recommendations.
-                </p>
-
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
-                    <input
-                      id="dontShowUploads"
-                      type="checkbox"
-                      checked={dontShowAgain}
-                      onChange={(e) => setDontShowAgain(e.target.checked)}
-                      className="h-4 w-4 rounded border-border focus:ring-2 focus:ring-indigo-300"
-                    />
-                    Don't show again
-                  </label>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={closeUploadsPopup}
-                      className="px-3 py-1.5 text-sm rounded-lg border border-transparent hover:bg-white/40 bg-white/30 text-text/80 dark:text-text transition"
-                    >
-                      Close
-                    </button>
-
-                    <button
-                      onClick={goToUploads}
-                      className="px-3 py-1.5 text-sm rounded-lg bg-gradient-to-r from-indigo-600 via-fuchsia-600 to-amber-500 text-white shadow-md hover:brightness-105 transform-gpu active:translate-y-0.5"
-                    >
-                      Go to Uploads
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Decorative bottom row */}
-            <div className="mt-3 -mx-4 px-4 py-2 border-t border-border/60 bg-gradient-to-t from-white/0 to-white/40 dark:from-transparent dark:to-transparent/10">
-              <div className="text-xs text-muted">Tip: CSV columns should include <span className="font-medium">trainID</span>, <span className="font-medium">mileage</span>, and <span className="font-medium">status</span>.</div>
-            </div>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={closeUploadsPopup}
+              className="px-3 py-1.5 text-sm rounded-md border border-border text-text hover:bg-neutral-50 dark:hover:bg-neutral-800"
+            >
+              Close
+            </button>
+            <button
+              onClick={goToUploads}
+              className="cta-primary px-3 py-1.5 text-sm rounded-md"
+            >
+              Go to Uploads
+            </button>
           </div>
         </div>
-      </motion.div>
-    )}
+      </div>
+    </div>
+  </motion.div>
+)}
+
+
 
     {/* KPI Row */}
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
