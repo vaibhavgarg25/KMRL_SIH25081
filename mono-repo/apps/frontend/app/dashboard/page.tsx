@@ -1,9 +1,8 @@
-
 "use client";
 
 import React, { useEffect, useState, Suspense } from "react";
 import { KpiTile } from "@/components/KpiTile";
-import { RecommendationCard } from "@/components/RecommendationCard";
+
 import { BayView } from "@/components/BayView";
 import CircularProgress from "@/components/CircularProgress";
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data";
@@ -16,6 +15,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 // import all lucide icons you use
 import { BarChart3Icon, Calendar, Train, History, Settings, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function SidebarDemo() {
   const links = [
@@ -48,33 +48,33 @@ export function SidebarDemo() {
       ),
     },
     {
-  label: "History",
-  href: "/dashboard/history",
-  icon: (
-    <History className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
-  ),
-},
-{
-  label: "Settings",
-  href: "/dashboard/settings",
-  icon: (
-    <Settings className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
-  ),
-},
-{
-  label: "Upload",
-  href: "/dashboard/csv-template",
-  icon: (
-    <Upload className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
-  ),
-},
+      label: "History",
+      href: "/dashboard/history",
+      icon: (
+        <History className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
+    {
+      label: "Settings",
+      href: "/dashboard/settings",
+      icon: (
+        <Settings className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
+    {
+      label: "Upload",
+      href: "/dashboard/csv-template",
+      icon: (
+        <Upload className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
+      ),
+    },
   ];
   const [open, setOpen] = useState(false);
   return (
     <div
       className={cn(
         "flex h-screen w-full bg-[var(--bg)] text-[var(--fg)]",
-        "h-[60vh]", // for your use case, use `h-screen` instead of `h-[60vh]`
+        "h-[60vh]" // for your use case, use `h-screen` instead of `h-[60vh]`
       )}
     >
       <Sidebar open={open} setOpen={setOpen}>
@@ -125,9 +125,14 @@ export const LogoIcon = () => {
 
 
 export default function Dashboard() {
+  const router = useRouter();
   const [trainsets, setTrainsets] = useState<Trainset[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Upload popup state
+  const [showUploadsPopup, setShowUploadsPopup] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -150,6 +155,13 @@ export default function Dashboard() {
       mounted = false;
     };
   }, []);
+
+  // Show the uploads popup once after loading — simulates "show after login / first visit"
+  useEffect(() => {
+  if (loading) return;
+  setShowUploadsPopup(true); // show after each sign-in/session load
+}, [loading]);
+
 
   // helper to accept string | Date
   const daysUntilSafe = (d?: string | Date | null) => {
@@ -350,10 +362,76 @@ export default function Dashboard() {
       confidence: x.health,
     }));
 
-  return (
-    <div className="min-h-screen app-gradient p-6 space-y-8">
-      {/* KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+  // Upload popup handlers
+  const closeUploadsPopup = () => {
+    setShowUploadsPopup(false);
+    if (dontShowAgain) {
+      try {
+        window.localStorage.setItem("dashboard_seen_uploads_popup_v1", "1");
+      } catch {
+        // ignore storage error
+      }
+    }
+  };
+
+  const goToUploads = () => {
+    try {
+      window.localStorage.setItem("dashboard_seen_uploads_popup_v1", "1");
+    } catch {}
+    router.push("/dashboard/csv-template");
+  };
+
+return (
+  <>
+    {/* Uploads popup — simple, theme-aligned */}
+{showUploadsPopup && (
+  <motion.div
+    initial={{ opacity: 0, y: 8 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: 6 }}
+    transition={{ duration: 0.18, ease: "easeOut" }}
+    className="fixed right-6 bottom-6 z-50 w-[22rem] max-w-[90vw]"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Uploads helper"
+  >
+    <div className="rounded-xl border border-border bg-[var(--bg)] shadow-md">
+      <div className="flex items-start gap-3 p-4">
+        {/* Neutral icon chip */}
+        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+          📤
+        </div>
+
+        <div className="flex-1">
+          <h4 className="font-semibold text-text">Start here: Uploads</h4>
+          <p className="mt-0.5 text-sm leading-snug text-muted">
+            Upload CSVs/templates to improve recommendations.
+          </p>
+
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={closeUploadsPopup}
+              className="px-3 py-1.5 text-sm rounded-md border border-border text-text hover:bg-neutral-50 dark:hover:bg-neutral-800"
+            >
+              Close
+            </button>
+            <button
+              onClick={goToUploads}
+              className="cta-primary px-3 py-1.5 text-sm rounded-md"
+            >
+              Go to Uploads
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </motion.div>
+)}
+
+
+
+    {/* KPI Row */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
   <KpiTile
     title="Fleet Availability"
     value={`${availabilityRate}%`}
@@ -457,11 +535,8 @@ export default function Dashboard() {
             <BayView trainsets={trainsets} layout="2x8" />
           </div>
 
-          
-
-          
         </div>
       </div>
-    </div>
+    </>
   );
 }
