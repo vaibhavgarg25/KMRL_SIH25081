@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from "react";
 import { KpiTile } from "@/components/KpiTile";
-import { RecommendationCard } from "@/components/RecommendationCard";
+
 import { BayView } from "@/components/BayView";
 import CircularProgress from "@/components/CircularProgress";
 import { fetchTrainsets, type Trainset } from "@/lib/mock-data";
