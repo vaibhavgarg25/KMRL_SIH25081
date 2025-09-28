@@ -1,18 +1,44 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { login } from "@/lib/auth"
 import Link from "next/link"
 
 export default function LoginPage() {
+  // ⚠️ These are hardcoded because you asked for website-side autofill.
+  // If you ever want to hide them, switch to env vars:
+  // const DEMO_EMAIL = process.env.NEXT_PUBLIC_DEMO_EMAIL ?? "admin@kochimetro.com"
+  // const DEMO_PASS  = process.env.NEXT_PUBLIC_DEMO_PASSWORD ?? "metro2024"
+  const DEMO_EMAIL = "admin@kochimetro.com"
+  const DEMO_PASS = "metro2024"
+
+  // Toggle this to auto-submit after autofill
+  const AUTO_SUBMIT = false
+
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+
+  // Prevent double-submit if AUTO_SUBMIT is true
+  const hasAutoSubmitted = useRef(false)
+
+  useEffect(() => {
+    // Autofill on mount
+    setEmail(DEMO_EMAIL)
+    setPassword(DEMO_PASS)
+
+    // Optional: auto-submit once after fields are set
+    if (AUTO_SUBMIT && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true
+      void handleSubmit(new Event("submit") as unknown as React.FormEvent)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,6 +83,11 @@ export default function LoginPage() {
         Home
       </Link>
 
+      {/* Demo/autofill banner */}
+      <div className="absolute top-6 right-6 z-20 text-xs text-black bg-amber-300/90 px-3 py-1 rounded-full border border-amber-400/60">
+        Autofill is ON (admin@kochimetro.com)
+      </div>
+
       <div className="w-full max-w-lg relative z-10">
         <div className="bg-white/5 backdrop-blur-xl rounded-3xl p-12 border border-white/10 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-white/10 to-transparent rounded-full -translate-y-16 translate-x-16"></div>
@@ -78,7 +109,7 @@ export default function LoginPage() {
               <p className="text-white/70 text-sm">Government Employee Access Portal</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-8">
+            <form onSubmit={handleSubmit} className="space-y-8" autoComplete="on">
               <div className="space-y-2">
                 <label htmlFor="email" className="block text-sm font-medium text-white/90 mb-3">
                   Email Address
@@ -96,11 +127,13 @@ export default function LoginPage() {
                   </div>
                   <input
                     id="email"
+                    name="email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     placeholder="admin@kochimetro.com"
+                    autoComplete="username email"
                     className="w-full pl-12 pr-4 py-4 bg-white/5 backdrop-blur-sm border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:border-white/40 focus:bg-white/10 transition-all duration-300"
                   />
                 </div>
@@ -123,16 +156,19 @@ export default function LoginPage() {
                   </div>
                   <input
                     id="password"
+                    name="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     className="w-full pl-12 pr-16 py-4 bg-white/5 backdrop-blur-sm border border-white/20 rounded-xl text-white placeholder-white/50 focus:outline-none focus:border-white/40 focus:bg-white/10 transition-all duration-300"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
                     className="absolute right-4 top-1/2 transform -translate-y-1/2 text-white/60 hover:text-white transition-colors"
                   >
                     {showPassword ? (
@@ -172,7 +208,6 @@ export default function LoginPage() {
                   />
                   <span className="text-sm text-white/80">Remember me</span>
                 </label>
-                
               </div>
 
               {error && (
@@ -197,9 +232,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-8 text-center">
-              
-            </div>
+            <div className="mt-8 text-center"></div>
           </div>
         </div>
       </div>
