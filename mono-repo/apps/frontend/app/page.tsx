@@ -184,7 +184,7 @@ export default function HomePage() {
               </div>
 
               <div className="flex gap-3">
-                <Link href="/demo" legacyBehavior>
+                <Link href="https://youtu.be/s0kYmnge1xA" legacyBehavior>
                   <a className="inline-flex items-center gap-2 rounded-full bg-teal-400 px-4 py-2 text-sm font-semibold text-black">
                     Request demo
                     <Play className="w-4 h-4" />
