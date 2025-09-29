@@ -83,9 +83,17 @@ const CircularProgress = ({
 }
 
 /* -------------------------
-   Health + recommendation
+   Health model (0–100) + readiness gate
    ------------------------- */
 
+const MIN_OPERATIONAL_HEALTH = 80 // trains below this won’t be counted/flagged as operational
+
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x))
+}
+function safeNum(v: unknown, def = 0) {
+  return typeof v === "number" && !Number.isNaN(v) ? v : def
+}
 function daysUntilSafe(d: string | Date) {
   try {
     return daysUntil(d as any)
@@ -94,68 +102,131 @@ function daysUntilSafe(d: string | Date) {
   }
 }
 
-function computeRawHealth(trainset: any): number {
-  const safeNum = (v: any, cap = 100) => (typeof v === "number" && !Number.isNaN(v) ? Math.max(0, Math.min(v, cap)) : 0)
+/** Mileage → 0..100 using a smooth decay curve (good up to ~250k, then decays) */
+function mileageScoreKM(km: number) {
+  const m = Math.max(0, Math.min(km, 1_000_000))
+  return 100 * (1 / (1 + Math.pow(m / 250_000, 1.4)))
+}
 
+/** Certificates time remaining: 0 when expired, 100 at ≥ 180 days; linear in between */
+function certificateTimeScore(minDays: number) {
+  if (!Number.isFinite(minDays)) return 50
+  if (minDays <= 0) return 0
+  const s = clamp01(minDays / 180) * 100
+  return Math.min(100, s)
+}
+
+/** Wear → 0..100 (100 = no wear). Missing → 70 (neutral). */
+function wearScore(brakeWearPct?: number, hvacWearPct?: number) {
+  const bw = safeNum(brakeWearPct, NaN)
+  const hw = safeNum(hvacWearPct, NaN)
+  if (Number.isNaN(bw) && Number.isNaN(hw)) return 70
+  const vals = [bw, hw].filter((x) => Number.isFinite(x)) as number[]
+  const avgWear = vals.reduce((a, b) => a + b, 0) / vals.length
+  return clamp01(1 - avgWear / 100) * 100
+}
+
+/** Fitness flags → percentage of true among populated; empty → 50 */
+function fitnessStatusScore(flags: Array<boolean | undefined | null>) {
+  const populated = flags.filter((f) => f !== undefined && f !== null) as boolean[]
+  if (!populated.length) return 50
+  const good = populated.filter(Boolean).length
+  return (good / populated.length) * 100
+}
+
+/** Open jobs → 100 when 0 jobs, minus 8 per job, floor at 0 (cap at ~12+) */
+function jobsBurdenScore(openJobs: number) {
+  return Math.max(0, 100 - 8 * Math.max(0, openJobs || 0))
+}
+
+export function computeHealth(trainset: any): number {
+  // Inputs
   const fitnessFlags = [
     trainset.fitness?.rollingStockFitnessStatus,
     trainset.fitness?.signallingFitnessStatus,
     trainset.fitness?.telecomFitnessStatus,
   ]
-  const fitnessPopulated = fitnessFlags.filter((f) => f !== undefined && f !== null).length
-  const fitnessTrue = fitnessFlags.filter((f) => f === true).length
-  const fitnessPercent = fitnessPopulated ? (fitnessTrue / fitnessPopulated) * 100 : 50
 
-  const expiryDates = [
+  const expiryDays = [
     trainset.fitness?.rollingStockFitnessExpiryDate,
     trainset.fitness?.signallingFitnessExpiryDate,
     trainset.fitness?.telecomFitnessExpiryDate,
-  ].filter(Boolean)
-  const minExpiryDays = expiryDates.length
-    ? Math.min(...expiryDates.map((d: any) => daysUntilSafe(d)))
-    : Number.POSITIVE_INFINITY
-  let expiryPenalty = 0
-  if (minExpiryDays <= 0) expiryPenalty = 40
-  else if (minExpiryDays <= 7) expiryPenalty = 20
-  else if (minExpiryDays <= 30) expiryPenalty = 10
+  ]
+    .filter(Boolean)
+    .map((d: any) => daysUntilSafe(d))
+  const soonestDays = expiryDays.length ? Math.min(...expiryDays) : Number.POSITIVE_INFINITY
 
-  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
-  const jobPenalty = Math.min(openJobs * 3, 30)
+  const openJobs = safeNum(trainset.jobCardStatus?.openJobCards, 0)
+  const mileageKM = safeNum(trainset.mileage?.totalMileageKM, 0)
+  const brakeWear = safeNum(trainset.mileage?.brakepadWearPercent, NaN)
+  const hvacWear = safeNum(trainset.mileage?.hvacWearPercent, NaN)
+  const opsScore = Math.max(0, Math.min(100, safeNum(trainset.operations?.score, 70)))
+  const cleaningPenalty = trainset.cleaning?.cleaningRequired ? 5 : 0 // lighter than before
+  const brandingBoost = trainset.branding?.brandingActive ? 2 : 0 // tiny nudge
 
-  const mileage = safeNum(trainset.mileage?.totalMileageKM ?? 0, 1_000_000)
-  const mileageScore = 100 * (1 / (1 + Math.pow(mileage / 180000, 1.2)))
+  // Sub-scores (0..100)
+  const sFitnessFlags = fitnessStatusScore(fitnessFlags)
+  const sCertTime = certificateTimeScore(soonestDays)
+  const sMileage = mileageScoreKM(mileageKM)
+  const sWear = wearScore(brakeWear, hvacWear)
+  const sJobs = jobsBurdenScore(openJobs)
+  const sOps = opsScore
 
-  const brake = safeNum(trainset.mileage?.brakepadWearPercent ?? 0, 100)
-  const hvac = safeNum(trainset.mileage?.hvacWearPercent ?? 0, 100)
-  const wearScore = brake || hvac ? Math.max(0, 100 - (brake + hvac) / 2) : 70
+  // Weights sum to 1.0
+  const W = {
+    fitnessFlags: 0.25,
+    certTime: 0.20,
+    wear: 0.20,
+    ops: 0.15,
+    mileage: 0.15,
+    jobs: 0.05,
+  }
 
-  const cleaningPenalty = trainset.cleaning?.cleaningRequired ? 10 : 0
-  const brandingBoost = trainset.branding?.brandingActive ? 4 : 0
-  const opScore = safeNum(trainset.operations?.score ?? 70, 100)
+  let raw =
+    W.fitnessFlags * sFitnessFlags +
+    W.certTime * sCertTime +
+    W.wear * sWear +
+    W.ops * sOps +
+    W.mileage * sMileage +
+    W.jobs * sJobs
 
-  const raw =
-    0.28 * fitnessPercent +
-    0.22 * mileageScore +
-    0.2 * wearScore +
-    0.2 * opScore +
-    0.1 * 100 -
-    expiryPenalty -
-    jobPenalty -
-    cleaningPenalty +
-    brandingBoost
+  // Small adjustments
+  raw = raw - cleaningPenalty + brandingBoost
 
+  // Clamp and round
   return Math.round(Math.max(0, Math.min(100, raw)))
 }
 
-function mapToDisplayHealth(raw: number): number {
-  return Math.round(70 + (raw / 100) * 20)
+/** Business rule: only "operationally eligible" if health & safety meet minimums */
+export function isOperationallyEligible(trainset: any, health: number) {
+  const soonestDays = [
+    trainset.fitness?.rollingStockFitnessExpiryDate,
+    trainset.fitness?.signallingFitnessExpiryDate,
+    trainset.fitness?.telecomFitnessExpiryDate,
+  ]
+    .filter(Boolean)
+    .map((d: any) => daysUntilSafe(d))
+  const minDays = soonestDays.length ? Math.min(...soonestDays) : Number.POSITIVE_INFINITY
+
+  const openJobs = safeNum(trainset.jobCardStatus?.openJobCards, 0)
+  const bw = safeNum(trainset.mileage?.brakepadWearPercent, NaN)
+  const hw = safeNum(trainset.mileage?.hvacWearPercent, NaN)
+  const wearVals = [bw, hw].filter((x) => Number.isFinite(x)) as number[]
+  const avgWear = wearVals.length ? wearVals.reduce((a, b) => a + b, 0) / wearVals.length : 30 // assume okay if missing
+
+  return (
+    health >= MIN_OPERATIONAL_HEALTH &&
+    minDays > 0 && // no expired fitness
+    openJobs <= 5 && // too many open jobs blocks eligibility
+    avgWear <= 60 // very worn systems block eligibility
+  )
 }
 
-function getHealthScoreFromModel(trainset: any): number {
-  return mapToDisplayHealth(computeRawHealth(trainset))
-}
+/* -------------------------
+   Recommendation text (kept, slightly aware of health)
+   ------------------------- */
 
-function getRecommendationReason(trainset: any): string {
+function getRecommendationReason(trainset: any, health?: number): string {
   const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
   const totalMileage = trainset.mileage?.totalMileageKM ?? 0
   const soon = [
@@ -170,6 +241,7 @@ function getRecommendationReason(trainset: any): string {
   if (soon <= 0) return `⚠️ Fitness expired — ground until recertified`
   if (openJobs > 5) return `🛠 ${openJobs} open jobs — prioritize maintenance`
   if (totalMileage > 250000) return `🚄 High mileage (${Math.round(totalMileage)} km) — inspect`
+  if (typeof health === "number" && health < MIN_OPERATIONAL_HEALTH) return `⛔ Below operational threshold (${health}%)`
 
   return `ℹ️ ${openJobs} open jobs • ${Math.round(totalMileage).toLocaleString()} km`
 }
@@ -225,12 +297,17 @@ export default function TrainsetsPage() {
 
   const filteredTrainsets = useMemo(() => {
     return (trainsets || [])
-      .map((t) => ({
-        ...t,
-        raw_health: computeRawHealth(t),
-        health_score: getHealthScoreFromModel(t),
-        recommendation: getRecommendationReason(t),
-      }))
+      .map((t) => {
+        const health = computeHealth(t)
+        const eligible = isOperationallyEligible(t, health)
+        return {
+          ...t,
+          raw_health: health,
+          health_score: health, // 0..100 now
+          eligible,
+          recommendation: getRecommendationReason(t, health),
+        }
+      })
       .filter((t) => {
         const q = searchQuery.trim().toLowerCase()
         if (!q) return true
@@ -261,18 +338,25 @@ export default function TrainsetsPage() {
   }, [trainsets, searchQuery, statusFilter, fitnessFilter])
 
   const totalTrainsets = trainsets.length
-  const inServiceTrains = trainsets.filter(
-    (t) =>
-      t.operations?.operationalStatus?.toString()?.toLowerCase() === "in_service" || (t as any).status === "Active",
-  ).length
-  const maintenanceTrainsets = trainsets.filter(
-    (t) =>
-      t.operations?.operationalStatus?.toString()?.toLowerCase()?.includes("maint") ||
-      (t as any).status === "Maintenance",
-  ).length
-  const standbyTrainsets = trainsets.filter(
-    (t) => t.operations?.operationalStatus?.toString()?.toLowerCase() === "standby" || (t as any).status === "Standby",
-  ).length
+
+  // Count "in service" only if the train is eligible by health/safety gate
+  const inServiceTrains = trainsets.filter((t) => {
+    const declaredInService =
+      t.operations?.operationalStatus?.toString()?.toLowerCase() === "in_service" || (t as any).status === "Active"
+    if (!declaredInService) return false
+    const health = computeHealth(t)
+    return isOperationallyEligible(t, health)
+  }).length
+
+  const maintenanceTrainsets = trainsets.filter((t) => {
+    const s = (t.operations?.operationalStatus || t.status || "").toString().toLowerCase()
+    return s.includes("maint") || (t as any).status === "Maintenance"
+  }).length
+
+  const standbyTrainsets = trainsets.filter((t) => {
+    const s = (t.operations?.operationalStatus || t.status || "").toString().toLowerCase()
+    return s === "standby" || (t as any).status === "Standby"
+  }).length
 
   const availabilityRate = totalTrainsets > 0 ? Math.round((inServiceTrains / totalTrainsets) * 100) : 0
   const totalOpenJobs = trainsets.reduce((s, t) => s + (t.jobCardStatus?.openJobCards || 0), 0)
@@ -316,19 +400,18 @@ export default function TrainsetsPage() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="bg-background">
-  <div className="max-w-7xl mx-auto px-6 py-6">
-    <div className="flex items-center justify-between">
-      <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-        <TbTrain className="text-teal-500" /> Trainset Fleet Management
-      </h1>
-      <div className="text-right">
-        <div className="text-xl font-semibold text-green-600">{availabilityRate}%</div>
-        <div className="text-sm text-muted-foreground">Fleet Availability</div>
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
+              <TbTrain className="text-teal-500" /> Trainset Fleet Management
+            </h1>
+            <div className="text-right">
+              <div className="text-xl font-semibold text-green-600">{availabilityRate}%</div>
+              <div className="text-sm text-muted-foreground">Fleet Availability</div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</div>
-
 
       {/* Metrics */}
       <div className="max-w-7xl mx-auto p-6 space-y-8">
@@ -441,24 +524,16 @@ export default function TrainsetsPage() {
                 <option value="Medium">⚖️ Medium (60-79%)</option>
                 <option value="Low">❌ Low (&lt;60%)</option>
               </select>
-
-              
             </div>
           </div>
         </div>
-
-
-
-
-
-
 
         {/* Trainset list/cards */}
         {viewMode === "cards" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredTrainsets.map((t) => {
-              const health = t.health_score || getHealthScoreFromModel(t)
-              const reason = t.recommendation || getRecommendationReason(t)
+              const health = t.health_score
+              const reason = t.recommendation
 
               return (
                 <article
@@ -473,6 +548,13 @@ export default function TrainsetsPage() {
                           🚆 {t.trainname || `Train ${t.trainID}`}
                         </h3>
                         <span className="status-pill">{t.status}</span>
+                        {!t.eligible &&
+                          ((t as any).status === "Active" ||
+                            t.operations?.operationalStatus?.toString()?.toLowerCase() === "in_service") && (
+                            <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">
+                              Not eligible for service
+                            </span>
+                          )}
                       </div>
                       <div className="text-sm text-muted-foreground flex items-center gap-2">
                         <FaBolt className="w-3 h-3 text-yellow-500" />
@@ -524,9 +606,6 @@ export default function TrainsetsPage() {
             trainset={selectedTrainset}
           />
         )}
-
-
-        
       </div>
     </div>
   )
