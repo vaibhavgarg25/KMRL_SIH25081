@@ -34,11 +34,13 @@ export function SidebarDemo() {
       ),
     },
     {
-      label: "Planner",
-      href: "/dashboard/planner",
-      icon: (
-        <Calendar className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />
-      ),
+      label: "Branding Planner",
+      icon: <Calendar className="h-5 w-5 shrink-0 text-neutral-700 dark:text-neutral-200" />,
+      children: [
+        { label: "Overview", href: "/dashboard/branding/overview" },
+        { label: "Allocation", href: "/dashboard/branding/allocation" },
+        { label: "Scenarios", href: "/dashboard/branding/scenarios" },
+      ],
     },
     {
       label: "Simulation",
@@ -69,31 +71,13 @@ export function SidebarDemo() {
       ),
     },
   ];
+
   const [open, setOpen] = useState(false);
-  return (
-    <div
-      className={cn(
-        "flex h-screen w-full bg-[var(--bg)] text-[var(--fg)]",
-        "h-[60vh]" // for your use case, use `h-screen` instead of `h-[60vh]`
-      )}
-    >
-      <Sidebar open={open} setOpen={setOpen}>
-        <SidebarBody className="justify-between gap-10">
-          <div className="flex flex-1 flex-col overflow-x-hidden overflow-y-auto">
-            {open ? <Logo /> : <LogoIcon />}
-            <div className="mt-8 flex flex-col gap-2">
-              {links.map((link, idx) => (
-                <SidebarLink key={idx} link={link} />
-              ))}
-            </div>
-          </div>
-          
-        </SidebarBody>
-      </Sidebar>
-      <Dashboard />
-    </div>
-  );
+
+  // ⬆️ Now "Branding Planner" can expand/collapse to show its children
 }
+
+
 export const Logo = () => {
   return (
     <a
