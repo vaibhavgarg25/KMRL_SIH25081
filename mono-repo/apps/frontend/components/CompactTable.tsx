@@ -21,61 +21,88 @@ function daysUntilSafe(d: string | Date) {
   }
 }
 
+/** NEW: 0–100 health model (no forced 70–90 band) */
 function computeRawHealth(trainset: any): number {
-  const safeNum = (v: any, cap = 100) => (typeof v === "number" && !Number.isNaN(v) ? Math.max(0, Math.min(v, cap)) : 0)
+  const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+  const safeNum = (v: any, def = 0) => (typeof v === "number" && !Number.isNaN(v) ? v : def)
 
+  // Inputs
   const fitnessFlags = [
     trainset.fitness?.rollingStockFitnessStatus,
     trainset.fitness?.signallingFitnessStatus,
     trainset.fitness?.telecomFitnessStatus,
   ]
-  const fitnessPopulated = fitnessFlags.filter((f) => f !== undefined && f !== null).length
-  const fitnessTrue = fitnessFlags.filter((f) => f === true).length
-  const fitnessPercent = fitnessPopulated ? (fitnessTrue / fitnessPopulated) * 100 : 50
 
-  const expiryDates = [
+  const expiryDaysArr = [
     trainset.fitness?.rollingStockFitnessExpiryDate,
     trainset.fitness?.signallingFitnessExpiryDate,
     trainset.fitness?.telecomFitnessExpiryDate,
-  ].filter(Boolean)
-  const minExpiryDays = expiryDates.length
-    ? Math.min(...expiryDates.map((d: any) => daysUntilSafe(d)))
-    : Number.POSITIVE_INFINITY
-  let expiryPenalty = 0
-  if (minExpiryDays <= 0) expiryPenalty = 40
-  else if (minExpiryDays <= 7) expiryPenalty = 20
-  else if (minExpiryDays <= 30) expiryPenalty = 10
+  ]
+    .filter(Boolean)
+    .map((d: any) => daysUntilSafe(d))
+  const soonestDays = expiryDaysArr.length ? Math.min(...expiryDaysArr) : Number.POSITIVE_INFINITY
 
-  const openJobs = trainset.jobCardStatus?.openJobCards ?? 0
-  const jobPenalty = Math.min(openJobs * 3, 30)
+  const openJobs = safeNum(trainset.jobCardStatus?.openJobCards, 0)
+  const mileageKM = Math.max(0, Math.min(safeNum(trainset.mileage?.totalMileageKM, 0), 1_000_000))
+  const brakeWear = safeNum(trainset.mileage?.brakepadWearPercent, NaN)
+  const hvacWear = safeNum(trainset.mileage?.hvacWearPercent, NaN)
+  const opsScore = Math.max(0, Math.min(100, safeNum(trainset.operations?.score, 70)))
+  const cleaningPenalty = trainset.cleaning?.cleaningRequired ? 5 : 0 // lighter nudge
+  const brandingBoost = trainset.branding?.brandingActive ? 2 : 0     // tiny nudge
 
-  const mileage = safeNum(trainset.mileage?.totalMileageKM ?? 0, 1_000_000)
-  const mileageScore = 100 * (1 / (1 + Math.pow(mileage / 180000, 1.2)))
+  // Sub-scores (0..100)
+  const fitnessStatusScore = (() => {
+    const populated = fitnessFlags.filter((f) => f !== undefined && f !== null) as boolean[]
+    if (!populated.length) return 50
+    const good = populated.filter(Boolean).length
+    return (good / populated.length) * 100
+  })()
 
-  const brake = safeNum(trainset.mileage?.brakepadWearPercent ?? 0, 100)
-  const hvac = safeNum(trainset.mileage?.hvacWearPercent ?? 0, 100)
-  const wearScore = brake || hvac ? Math.max(0, 100 - (brake + hvac) / 2) : 70
+  const certificateTimeScore = (() => {
+    if (!Number.isFinite(soonestDays)) return 50
+    if (soonestDays <= 0) return 0
+    return Math.min(100, clamp01(soonestDays / 180) * 100) // ≥180d => 100
+  })()
 
-  const cleaningPenalty = trainset.cleaning?.cleaningRequired ? 10 : 0
-  const brandingBoost = trainset.branding?.brandingActive ? 4 : 0
-  const opScore = safeNum(trainset.operations?.score ?? 70, 100)
+  const mileageScore = 100 * (1 / (1 + Math.pow(mileageKM / 250_000, 1.4))) // smooth decay after ~250k
 
-  const raw =
-    0.28 * fitnessPercent +
-    0.22 * mileageScore +
-    0.2 * wearScore +
-    0.2 * opScore +
-    0.1 * 100 -
-    expiryPenalty -
-    jobPenalty -
-    cleaningPenalty +
-    brandingBoost
+  const wearScore = (() => {
+    const vals = [brakeWear, hvacWear].filter((x) => Number.isFinite(x)) as number[]
+    if (!vals.length) return 70 // neutral when missing
+    const avgWear = vals.reduce((a, b) => a + b, 0) / vals.length
+    return clamp01(1 - avgWear / 100) * 100 // 100 = no wear
+  })()
 
+  const jobsBurdenScore = Math.max(0, 100 - 8 * Math.max(0, openJobs)) // -8 per job (0..100)
+
+  // Weights sum to 1.0 (meaningful balance)
+  const W = {
+    fitnessFlags: 0.25,
+    certTime: 0.20,
+    wear: 0.20,
+    ops: 0.15,
+    mileage: 0.15,
+    jobs: 0.05,
+  }
+
+  let raw =
+    W.fitnessFlags * fitnessStatusScore +
+    W.certTime * certificateTimeScore +
+    W.wear * wearScore +
+    W.ops * opsScore +
+    W.mileage * mileageScore +
+    W.jobs * jobsBurdenScore
+
+  // Minor adjustments
+  raw = raw - cleaningPenalty + brandingBoost
+
+  // Clamp and round
   return Math.round(Math.max(0, Math.min(100, raw)))
 }
 
+/** NEW: identity mapping (display the true 0–100 score) */
 function mapToDisplayHealth(raw: number): number {
-  return Math.round(70 + (raw / 100) * 20)
+  return Math.round(raw)
 }
 
 function getHealthScore(trainset: any): number {
