@@ -150,6 +150,35 @@ class StorageManager:
         except Exception as e:
             print(f"[Storage] Failed to save CSV: {e}")
             raise
+        
+    @classmethod
+    async def save_text_to_storage(cls, text_content: str, file_path: str) -> str:
+        """
+        Save text content (JSON, logs, etc.) to S3 storage
+        
+        Args:
+            text_content: String content to save
+            file_path: S3 key/path (e.g., "logs/pipeline_run123_start.json")
+        
+        Returns:
+            str: S3 file path
+        """
+        try:
+            # Upload text content to S3 with public read access
+            cls.s3_client.put_object(
+                Bucket=cls.bucket_name,
+                Key=file_path,
+                Body=text_content.encode('utf-8'),
+                ContentType='application/json',
+                ACL='public-read'
+            )
+            
+            print(f"[S3 Storage] Text file uploaded: {file_path} ({len(text_content)} bytes)")
+            return file_path
+            
+        except Exception as e:
+            print(f"[S3 Storage] Failed to upload text file to {file_path}: {e}")
+            raise
     
     @classmethod
     async def save_simulation_result(cls, run_id: str, df: pd.DataFrame) -> str:
@@ -176,22 +205,43 @@ class StorageManager:
         from datetime import datetime
         
         log_filename = f"pipeline_{run_id}_{stage}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        log_path = cls.get_file_path("LOGS", log_filename)
-        
-        # Ensure directory exists
-        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         
         # Add timestamp to log data
         log_data["timestamp"] = datetime.now().isoformat()
         log_data["run_id"] = run_id
         log_data["stage"] = stage
         
-        # Save JSON log
-        with open(log_path, 'w') as f:
-            json.dump(log_data, f, indent=2)
+        # Convert to JSON string
+        log_content = json.dumps(log_data, indent=2)
+        
+        if cls.use_s3 and cls.s3_initialized:
+            try:
+                # Save to S3
+                log_path = f"{cls.PATHS['LOGS']}/{log_filename}"
+                await S3StorageManager.save_text_to_storage(log_content, log_path)
+                print(f"[Storage] Pipeline log saved to S3: {log_path}")
+                return log_path
+            except Exception as e:
+                print(f"[Storage] S3 log save failed, falling back to local: {e}")
+        
+        # Local storage fallback
+        try:
+            log_path = cls.get_file_path("LOGS", log_filename)
             
-        print(f"[Storage] Pipeline log saved: {log_path}")
-        return log_path
+            # Ensure directory exists
+            Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+            
+            # Save JSON log
+            with open(log_path, 'w') as f:
+                f.write(log_content)
+                
+            print(f"[Storage] Pipeline log saved locally: {log_path}")
+            return log_path
+        except Exception as e:
+            # If local save fails, just log the error and return empty string
+            print(f"[Storage] Failed to save pipeline log: {e}")
+            print(f"[Storage] Log data: {log_content}")
+            return ""  # Return empty string instead of raising exception
     
     @classmethod
     async def file_exists(cls, file_path: str) -> bool:
