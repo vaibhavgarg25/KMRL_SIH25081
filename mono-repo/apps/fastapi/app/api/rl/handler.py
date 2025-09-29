@@ -134,22 +134,32 @@ class RLHandler:
     async def _send_webhook(runId: str, filePath: str = None, status: str = "success", error_message: str = None):
         """Send async webhook call to backend after RL scheduling completes"""
         async with httpx.AsyncClient() as client:
-            try:
-                payload = {
-                    "runId": runId,
-                    "status": status,
-                    "outputFilePath": filePath,
-                    "error": error_message,
-                    "metadata": {
-                        "processedAt": pd.Timestamp.now().isoformat(),
-                        "service": "rl"
-                    }
+            payload = {
+                "runId": runId,
+                "status": status,
+                "outputFilePath": filePath,
+                "error": error_message,
+                "metadata": {
+                    "processedAt": pd.Timestamp.now().isoformat(),
+                    "service": "rl"
                 }
-                response = await client.post(RLHandler.WEBHOOK_URL, json=payload, timeout=5)
+            }
+            try:
+                response = await client.post(
+                    RLHandler.WEBHOOK_URL,
+                    json=payload,
+                    timeout=30  
+                )
                 response.raise_for_status()
-                print(f"[RL] Webhook sent successfully → {payload}")
+                print(f"[RL] ✅ Webhook sent successfully → {payload}")
+                print(f"[RL] Response: {response.status_code} {response.text}")
+            except httpx.HTTPStatusError as e:
+                print(f"[RL] ❌ Webhook failed with status {e.response.status_code}")
+                print(f"[RL] Response body: {e.response.text}")
+            except httpx.RequestError as e:
+                print(f"[RL] ❌ Webhook request error (connection/timeout): {e}")
             except Exception as e:
-                print(f"[RL] Failed to send webhook: {str(e)}")
+                print(f"[RL] ❌ Unexpected error: {e}")
 
     @staticmethod
     async def schedule_and_return_json(
