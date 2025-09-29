@@ -62,6 +62,37 @@ export class S3StorageManager {
     });
   }
 
+  static async getLatestFile(prefix: string): Promise<string | null> {
+  if (!this.initialized) {
+    throw new Error("S3StorageManager not initialized");
+  }
+
+  try {
+    const result = await this.s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: this.config.bucketName,
+        Prefix: prefix,
+      })
+    );
+
+    const objects = (result.Contents || [])
+      .filter((obj) => obj.Key && obj.LastModified) as _Object[];
+
+    if (objects.length === 0) {
+      return null;
+    }
+
+    // Sort by LastModified descending
+    objects.sort((a, b) => (b.LastModified!.getTime() - a.LastModified!.getTime()));
+
+    return objects[0]?.Key || null;
+  } catch (error) {
+    logger.error(`Failed to fetch latest file from S3 with prefix ${prefix}:`, error);
+    throw error;
+  }
+}
+
+
   /**
    * Ensure bucket exists and create directory placeholders
    */

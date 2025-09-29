@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import axios from "axios";
 import { processCSV } from "./csvService.js";
 import { StorageManager } from "../utils/storageManager.js";
+import { S3StorageManager } from "../utils/s3StorageManager.js";
 
 function notifyClients(eventType: string) {
   if (sseBroadcast) {
@@ -122,40 +123,55 @@ const triggerSimulationWithFile = async (runId: string, filePath: string) => {
 };
 
 const triggerSimulation = async (runId: string) => {
-  // Get the latest train data from database
-  const trains = await prisma.train.findMany();
-  
-  if (trains.length === 0) {
-    throw new Error("No train data available for simulation");
+  // 1. Get the latest simulation output file from S3
+  const latestFileKey = await S3StorageManager.getLatestFile(
+    "output/simulation/"
+  );
+
+  if (!latestFileKey) {
+    throw new Error("No previous simulation output file found in S3");
   }
-  
-  // Convert train data to CSV format
-  const csvData = convertTrainsToCSV(trains);
-  
-  // Save train data to shared storage
-  const filePath = await StorageManager.saveUserUpload(runId, csvData);
-  
-  // Call simulation API with file path
+
+  console.log("[Simulation] Using latest simulation file:", latestFileKey);
+
+  // 2. Optionally download the file if you need local processing
+  // const fileBuffer = await S3StorageManager.downloadFile(latestFileKey);
+  // console.log("Downloaded file size:", fileBuffer.length);
+
+  // 3. Call simulation API with the S3 path
   const simulationUrl = `${process.env.FAST_API_BASE_URI}/simulation/start-from-file`;
-  
+  console.log("simulationUrl", simulationUrl);
+
   try {
-    const response = await axios.post(simulationUrl, {
-      file_path: filePath,
-      runId: runId,
-      days_to_simulate: 1
-    }, {
-      headers: {
-        'Content-Type': 'application/json'
+    const response = await axios.post(
+      simulationUrl,
+      {
+        file_path: latestFileKey, // pass the S3 key
+        runId: runId,
+        days_to_simulate: 1,
       },
-      timeout: 300000, // 5 minutes timeout for simulation
+      {
+        headers: { "Content-Type": "application/json" },
+        timeout: 120000, // 2 minutes
+      }
+    );
+
+    console.log("response", response.data);
+    logger.info("Simulation triggered successfully with last simulation file", {
+      runId,
+      filePath: latestFileKey,
+      status: response.status,
     });
-    
-    logger.info("Simulation triggered successfully with file path", { runId, filePath, status: response.status });
   } catch (error) {
-    logger.error("Failed to trigger simulation", { runId, filePath, error: (error as Error).message });
+    logger.error("Failed to trigger simulation", {
+      runId,
+      filePath: latestFileKey,
+      error: (error as Error).message,
+    });
     throw error;
   }
 };
+
 
 const convertTrainsToCSV = (trains: any[]): string => {
   if (trains.length === 0) return '';

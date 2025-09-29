@@ -52,8 +52,8 @@ app.get("/api/events", (req, res) => {
     });
 });
 
-cron.schedule("5 0 * * *", async () => {
-    console.log("[Cron] Triggering daily simulation run");
+cron.schedule("0 21 */2 * *", async () => {
+    console.log("[Cron] Triggering simulation run (every 5 minutes)");
     try {
         await startSimulationRun();
     } catch (e) {

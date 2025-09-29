@@ -71,6 +71,11 @@ export class StorageManager {
     }
   }
 
+  static async getLatestFile(prefix: string): Promise<string | null> {
+    const bucket = process.env.S3_BUCKET_NAME!;
+    return S3StorageManager.getLatestFile(prefix);
+  }
+
   /**
    * Initialize local storage directories (legacy/fallback)
    */
