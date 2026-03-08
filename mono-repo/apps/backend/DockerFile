@@ -1,40 +1,64 @@
-# Stage 1: Build stage
-FROM node:20-alpine AS builder
-WORKDIR /build
-
-# Install all dependencies
-COPY package*.json ./
-RUN npm install && npm cache clean --force
-
-# Copy source code
-COPY . .
-
-# Build the app (e.g., TypeScript)
-RUN npm run build
-
-# Stage 2: Production dependencies
 FROM node:20-alpine AS deps
-WORKDIR /deps
-
-# Install only production dependencies
-COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
-
-# Stage 3: Runtime
-FROM node:20-alpine AS runner
-ENV NODE_ENV=production
 WORKDIR /app
 
-# Copy production node_modules
-COPY --from=deps /deps/node_modules ./node_modules
+RUN apk add --no-cache openssl libc6-compat
 
-# Copy build artifacts
-COPY --from=builder /build/dist ./dist
-COPY --from=builder /build/generated ./generated
-COPY --from=builder /build/package.json ./
+COPY package.json package-lock.json* ./
 
-# Expose application port
+RUN npm install --omit=dev --ignore-scripts && \
+    npm cache clean --force && \
+    rm -rf ~/.npm
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+RUN apk add --no-cache openssl libc6-compat
+
+COPY package.json package-lock.json* ./
+
+RUN npm install
+
+COPY tsconfig.json ./
+COPY prisma ./prisma
+COPY src ./src
+
+RUN npx prisma generate
+
+RUN npx tsc -p ./tsconfig.json
+
+RUN cd generated/prisma && \
+    rm -rf *.md *.ts && \
+    find . -name "*.map" -delete
+
+RUN find dist -type f \( -name "*.test.js" -o -name "*.spec.js" \) -delete
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+RUN apk add --no-cache \
+    dumb-init \
+    openssl \
+    libc6-compat
+
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+ENV NODE_ENV=production \
+    PORT=8000
+
+COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/generated ./generated
+COPY --from=builder --chown=nodejs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nodejs:nodejs /app/prisma ./prisma
+
+USER nodejs
+
 EXPOSE 8000
 
-# Start the app
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:8000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+ENTRYPOINT ["dumb-init", "--"]
+
 CMD ["node", "dist/index.js"]

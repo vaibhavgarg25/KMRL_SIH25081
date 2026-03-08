@@ -1,0 +1,62 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyd
+*.pkl
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Byte-compiled
+*.so
+
+# Distribution / packaging
+build/
+dist/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# Logs
+*.log
+
+# IDE/editor stuff
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.pyre/
+
+# Data files (if not needed in container)
+*.db
+*.sqlite3
+
+# Node stuff (if frontend included)
+node_modules/
+npm-debug.log
+yarn-error.log
