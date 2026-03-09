@@ -25,5 +25,15 @@
     "nohoist": [
       "apps/backend/**"
     ]
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
+    "install": "^0.13.0"
+  },
+  "overrides": {
+    "lodash": ">=4.17.22",
+    "hono": ">=4.12.4",
+    "@hono/node-server": ">=1.19.10"
   }
 }
